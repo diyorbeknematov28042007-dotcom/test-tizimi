@@ -1,0 +1,96 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const path = require('path');
+const app = express();
+
+app.use(express.json());
+app.use(express.static('public')); // 'public' papkasidagi hamma HTMLlarni ko'rish imkonini beradi
+
+// 1. MONGODB ULANISHI (O'zingizning parolingizni kiritishni unutmang!)
+const mongoURI = 'mongodb+srv://diyorbeknematov07:<db_D1yoRBeK>@cluster0.ynyw9ez.mongodb.net/?appName=Cluster0'; 
+mongoose.connect(mongoURI)
+    .then(() => console.log("Bazaga ulanish muvaffaqiyatli! ✅"))
+    .catch(err => console.log("Baza bilan bog'lanishda xato: ❌", err));
+
+// 2. MODELLAR (DATABASE SCHEMAS)
+const Teacher = mongoose.model('Teacher', new mongoose.Schema({
+    name: String, teacherCode: { type: String, unique: true }, testLimit: Number, usedLimit: { type: Number, default: 0 }
+}));
+
+const Test = mongoose.model('Test', new mongoose.Schema({
+    subject: String, testCode: { type: String, unique: true }, answers: Array, teacherCode: String
+}));
+
+const Result = mongoose.model('Result', new mongoose.Schema({
+    studentName: String, testCode: String, subject: String, score: Number, wrongDetails: Array, date: { type: Date, default: Date.now }
+}));
+
+// --- 3. YO'NALISHLAR (ROUTES) ---
+
+// ADMIN: O'qituvchi qo'shish va limitlarni ko'rish
+app.post('/api/admin/add-teacher', async (req, res) => {
+    try {
+        const newT = new Teacher(req.body);
+        await newT.save();
+        res.json({ success: true, message: "O'qituvchi muvaffaqiyatli qo'shildi!" });
+    } catch (e) { res.status(400).json({ message: "Xato! Kod band bo'lishi mumkin." }); }
+});
+
+app.get('/api/admin/teachers', async (req, res) => {
+    const data = await Teacher.find();
+    res.json(data);
+});
+
+// O'QITUVCHI: Kirish, Test qo'shish va Natijalarni ko'rish
+app.post('/api/teacher/login', async (req, res) => {
+    const teacher = await Teacher.findOne({ teacherCode: req.body.code });
+    if (teacher) res.json({ success: true, teacher });
+    else res.status(403).json({ message: "O'qituvchi kodi noto'g'ri!" });
+});
+
+app.post('/api/teacher/add-test', async (req, res) => {
+    const { tCode, subject, testCode, answers } = req.body;
+    const teacher = await Teacher.findOne({ teacherCode: tCode });
+    if (teacher.usedLimit >= teacher.testLimit) return res.status(400).json({ message: "Limitingiz tugagan!" });
+
+    try {
+        const newTest = new Test({ subject, testCode, answers, teacherCode: tCode });
+        await newTest.save();
+        teacher.usedLimit += 1;
+        await teacher.save();
+        res.json({ success: true, message: "Test muvaffaqiyatli yaratildi!" });
+    } catch (e) { res.status(400).json({ message: "Bu test kodi allaqachon mavjud!" }); }
+});
+
+app.get('/api/teacher/results/:testCode', async (req, res) => {
+    const results = await Result.find({ testCode: req.params.testCode }).sort({ score: -1 });
+    res.json(results);
+});
+
+// O'QUVCHI: Test yechish
+app.post('/api/student/submit', async (req, res) => {
+    const { name, testCode, userAnswers, gradeType } = req.body;
+    const test = await Test.findOne({ testCode });
+    if (!test) return res.status(404).json({ message: "Bunday kodli test topilmadi!" });
+
+    let score = 0;
+    let wrongs = [];
+    for (let i = 0; i < userAnswers.length; i++) {
+        if (userAnswers[i] === test.answers[i]) {
+            if (gradeType === 'umumiy') score += 1;
+            else { // Maxsus tartib (1.1, 2.1, 3.1)
+                if (i < 30) score += 1.1;
+                else if (i < 60) score += 2.1;
+                else score += 3.1;
+            }
+        } else { wrongs.push(i + 1); }
+    }
+    const finalScore = Math.round(score * 10) / 10;
+    const resultRecord = new Result({ studentName: name, testCode, subject: test.subject, score: finalScore, wrongDetails: wrongs });
+    await resultRecord.save();
+    res.json({ success: true, score: finalScore, wrongs });
+});
+
+// SERVERNI ISHGA TUSHIRISH
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Server http://localhost:${PORT} manzilida ishlamoqda! 🚀`));
