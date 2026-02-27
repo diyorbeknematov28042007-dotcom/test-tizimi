@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Boshqaruv Paneli</title>
+    <style>
+        body { font-family: sans-serif; padding: 30px; background-color: #f4f7f6; }
+        .admin-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
+        input, select, button { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background-color: #d32f2f; color: white; font-weight: bold; cursor: pointer; border: none; }
+        button:hover { background-color: #b71c1c; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #333; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="admin-card">
+    <h2>⚙️ Admin Paneli (Faqat Men uchun)</h2>
+    <hr>
+    
+    <h4>Yangi O'qituvchi Qo'shish</h4>
+    <input type="text" id="tName" placeholder="O'qituvchi ismi">
+    <input type="text" id="tCode" placeholder="Maxsus kod (masalan: PROF777)">
+    <input type="number" id="tLimit" placeholder="Test qo'shish limiti (masalan: 10)">
+    <button onclick="addTeacher()">O'qituvchini Faollashtirish</button>
+
+    <hr>
+    <h4>O'qituvchilar va Limitlar Monitoringi</h4>
+    <button style="background-color: #1976d2;" onclick="fetchTeachers()">Ro'yxatni Yangilash</button>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Ism</th>
+                <th>Kod</th>
+                <th>Jami Limit</th>
+                <th>Qolgan Limit</th>
+            </tr>
+        </thead>
+        <tbody id="teacherTable">
+            </tbody>
+    </table>
+</div>
+
+<script>
+    async function addTeacher() {
+        const name = document.getElementById('tName').value;
+        const code = document.getElementById('tCode').value;
+        const limit = document.getElementById('tLimit').value;
+
+        const response = await fetch('/api/admin/add-teacher', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, teacherCode: code, testLimit: limit })
+        });
+
+        const res = await response.json();
+        alert(res.message);
+        fetchTeachers();
+    }
+
+    async function fetchTeachers() {
+        const response = await fetch('/api/admin/teachers');
+        const teachers = await response.json();
+        const table = document.getElementById('teacherTable');
+        table.innerHTML = '';
+
+        teachers.forEach(t => {
+            const left = t.testLimit - t.addedTestsCount;
+            table.innerHTML += `
+                <tr>
+                    <td>${t.name}</td>
+                    <td>${t.teacherCode}</td>
+                    <td>${t.testLimit}</td>
+                    <td style="color: ${left < 2 ? 'red' : 'black'}">${left}</td>
+                </tr>
+            `;
+        });
+    }
+</script>
+
+</body>
+</html>
+// O'qituvchi qo'shish (Admin uchun)
+app.post('/api/admin/add-teacher', async (req, res) => {
+    try {
+        const { name, teacherCode, testLimit } = req.body;
+        const newTeacher = new Teacher({ name, teacherCode, testLimit });
+        await newTeacher.save();
+        res.json({ message: "O'qituvchi tizimga muvaffaqiyatli qo'shildi!" });
+    } catch (err) {
+        res.status(400).json({ message: "Xato: Bu kodli o'qituvchi allaqachon bor bo'lishi mumkin." });
+    }
+});
+
+// O'qituvchilar ro'yxatini ko'rish (Admin uchun)
+app.get('/api/admin/teachers', async (req, res) => {
+    const teachers = await Teacher.find();
+    res.json(teachers);
+});
